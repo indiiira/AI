@@ -11,7 +11,9 @@ import sys
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QTableWidgetItem, QApplication, QDialog
+
 
 
 class Ui_Dialog(object):
@@ -568,34 +570,5 @@ class Ui_Dialog(object):
         self.lineEdit_7.setPlaceholderText(_translate("Dialog", "Номер записи"))
         self.pushButton_2.setText(_translate("Dialog", "Удалить"))
 
-class MyDialog(QDialog):
-    def __init__(self):
-        super(MyDialog, self).__init__()
-        self.ui = Ui_Dialog()
-        self.ui.setupUi(self)
 
-        self.load_data_from_db()
 
-    def load_data_from_db(self):
-        # Подключаемся к базе данных
-        conn = sqlite3.connect('C:/Users/Индира/PycharmProjects/AI/My_DB.db')
-        cur = conn.cursor()
-
-        # Выполняем запрос SELECT для получения данных
-        cur.execute("SELECT * FROM Materials")
-        rows = cur.fetchall()
-
-        # Устанавливаем количество строк в tableWidget в соответствии с количеством записей
-        self.ui.tableWidget.setRowCount(len(rows))
-
-        # Вставляем данные в tableWidget
-        for row_index, row_data in enumerate(rows):
-            for column_index, data in enumerate(row_data):
-                self.ui.tableWidget.setItem(row_index, column_index, QTableWidgetItem(str(data)))
-
-        conn.close()
-
-app = QApplication(sys.argv)
-dialog = MyDialog()
-dialog.show()
-sys.exit(app.exec_())

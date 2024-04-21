@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import sqlite3
-import sys
 
 # Form implementation generated from reading ui file 'C:/Users/Индира/PycharmProjects/AI/UI/uisppr.ui'
 #
@@ -11,9 +9,8 @@ import sys
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QApplication
-
-
+from PyQt5.QtWidgets import QFileDialog, QGraphicsScene, QGraphicsPixmapItem
+from MainWindow import *
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -139,6 +136,7 @@ class Ui_MainWindow(object):
         palette = QtGui.QPalette()
         brush = QtGui.QBrush(QtGui.QColor(255, 87, 130))
         brush.setStyle(QtCore.Qt.SolidPattern)
+
         palette.setBrush(QtGui.QPalette.Active, QtGui.QPalette.Button, brush)
         brush = QtGui.QBrush(QtGui.QColor(255, 87, 130))
         brush.setStyle(QtCore.Qt.SolidPattern)
@@ -916,7 +914,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 831, 21))
-        self.menubar.setStyleSheet("background-color: rgb(0,0,0);")
+        self.menubar.setStyleSheet("background-color: rgb(255,255,255);")
         self.menubar.setObjectName("menubar")
         self.menu = QtWidgets.QMenu(self.menubar)
         self.menu.setObjectName("menu")
@@ -933,6 +931,8 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menu.menuAction())
 
         self.retranslateUi(MainWindow)
+
+
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -964,53 +964,3 @@ class Ui_MainWindow(object):
         self.actionOpen.setText(_translate("MainWindow", "Open"))
         self.actionWebcam.setText(_translate("MainWindow", "Webcam"))
 
-
-
-
-class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
-        super(MainWindow, self).__init__()
-        self.ui = Ui_MainWindow()
-        self.ui.setupUi(self)
-        self.loadMaterial()
-        self.ui.comboBox.currentIndexChanged.connect(self.comboBoxChanged)  # Связываем сигнал с слотом
-
-
-    def loadMaterial(self):
-        conn = sqlite3.connect('C:/Users/Индира/PycharmProjects/AI/My_DB.db')
-        cur = conn.cursor()
-        # Выполнение запроса для получения списка материалов
-        cur.execute("SELECT name FROM Materials")
-        rows = cur.fetchall()
-
-        # Добавление материалов в comboBox
-        for row in rows:
-            self.ui.comboBox.addItem(row[0])
-
-        conn.close()
-
-
-    def comboBoxChanged(self, index):
-        # Этот метод вызывается при изменении выбора в comboBox
-        material_name = self.ui.comboBox.currentText()
-
-        conn = sqlite3.connect('C:/Users/Индира/PycharmProjects/AI/My_DB.db')
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM Materials WHERE name = ?", (material_name,))
-        row = cur.fetchone()
-        conn.close()
-
-        if row:
-            # Обновляем QLabel нормативными значениями для выбранного материала
-            # Предполагается, что интересующие нас данные находятся в конкретных столбцах row[x]
-            self.ui.label_12.setText(str(row[2]))
-            self.ui.label_14.setText(str(row[3]))
-            self.ui.label_16.setText(str(row[4]))
-            self.ui.label_18.setText(str(row[5]))
-
-
-
-app = QtWidgets.QApplication(sys.argv)
-selector = MainWindow()
-selector.show()
-sys.exit(app.exec_())
