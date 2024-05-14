@@ -13,7 +13,7 @@ from PythonFile.uisppr import *
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-
+print(cv2.__version__)
 app = QtWidgets.QApplication(sys.argv)
 mainWindow = MainWindow()
 mainWindow.show()

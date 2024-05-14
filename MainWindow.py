@@ -1,10 +1,15 @@
 import sqlite3
 
+import cv2
+import numpy as np
 from PyQt5 import QtWidgets
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPixmap, QColor
 from PyQt5.QtWidgets import QFileDialog, QGraphicsPixmapItem, QGraphicsScene, QMessageBox
+from PIL import ImageGrab, ImageEnhance
+import time
 
-from MyDialog import MyDialog
+from BdWindow import MyDialog
 from PythonFile.uibd import Ui_Dialog
 from PythonFile.uisppr import Ui_MainWindow
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -24,11 +29,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.setupUi(self)
         self.dialog = MyDialog(self)
         self.loadMaterial()
+        self.ui.originalPixmap = None  # Здесь будем хранить исходное изображение
+        self.ui.adjustedPixmap = None  # Здесь будем хранить улучшенное изображение
         self.ui.comboBox.currentIndexChanged.connect(self.comboBoxChanged)  # Связываем сигнал с слотом
         self.ui.pushButton_2.clicked.connect(self.dialog.open)
         self.dialog.dataChanged.connect(self.loadMaterial)
         self.ui.actionOpen.triggered.connect(self.openImage)
+        self.ui.horizontalSlider.valueChanged.connect(self.updateImage)
+        self.ui.horizontalSlider_2.valueChanged.connect(self.updateImage)
+        self.ui.horizontalSlider_3.valueChanged.connect(self.updateImage)
+        self.ui.actionWebcam.triggered.connect(self.captureFromWebcam)
+        self.ui.pushButton.clicked.connect(self.captureFromWebcam)
 
+        self.ui.pushButton_3.clicked.connect(self.analyzeImage)
     def loadMaterial(self):
         self.ui.comboBox.clear()
         conn = sqlite3.connect('C:/Users/Индира/PycharmProjects/AI/My_DB.db')
@@ -66,21 +79,179 @@ class MainWindow(QtWidgets.QMainWindow):
         self.edit_dialog = Ui_Dialog(self)
         self.edit_dialog.show()
 
+    def explore(self, image):
+        image = np.copy(image)
+        blured = cv2.GaussianBlur(image, (5, 5), 0)
+        hsv = cv2.cvtColor(blured, cv2.COLOR_BGR2HSV)
+        lower_black = np.array([0, 0, 0])
+        upper_black = np.array([120, 120, 120])
+        mask = cv2.inRange(hsv, lower_black, upper_black)
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+        good_contours = []
+        bad_contours = []
+        area_c = 0
+        value_1 = float(self.ui.label_12.text())
+        value_2 = float(self.ui.label_14.text())
+
+        result = value_1 - value_2
+        for contour in contours:
+            area_c += cv2.contourArea(contour)
+            if value_1-value_2 <= cv2.contourArea(contour) <= value_2+value_1:
+                good_contours.append(contour)
+            else:
+                bad_contours.append(contour)
+        area_c = area_c / (image.shape[0] * image.shape[1])
+        cv2.drawContours(image, good_contours, -1, (0, 255, 0), 3)
+        cv2.drawContours(image, bad_contours, -1, (255, 0, 0), 3)
+        return image, area_c, len(bad_contours)
+
+    def analyzeImage(self):
+        try:
+            if self.ui.originalPixmap and not self.ui.originalPixmap.isNull():
+                image = self.ui.originalPixmap.toImage()
+                image = image.convertToFormat(QtGui.QImage.Format_RGB888)
+                ptr = image.bits()
+                ptr.setsize(image.byteCount())
+                arr = np.array(ptr).reshape((image.height(), image.width(), 3))
+
+                processed_image, area_c, bad_contours_count = self.explore(arr)
+
+                processed_qimage = QtGui.QImage(processed_image.data, processed_image.shape[1],
+                                                processed_image.shape[0],
+                                                processed_image.strides[0], QtGui.QImage.Format_RGB888)
+                processed_pixmap = QPixmap.fromImage(processed_qimage)
+                self.setupGraphicsView(self.ui.graphicsView_3, processed_pixmap)
+
+                self.ui.label_9.setText(f": {area_c:.2%}")
+                self.ui.label_10.setText(f" {bad_contours_count}")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при анализе изображения: {str(e)}")
+            print(f"Ошибка: {str(e)}")
+
+
     def openImage(self):
         try:
             imagePath, _ = QFileDialog.getOpenFileName(self, "Open Image File", "",
-                                                       "Images (*.png *.xpm *.jpg *.bmp *.gif)")
+                                                       "Images (*.png *.xpm *.jpg *.bmp *.gif *.jpeg)")
             if imagePath:
-                pixmap = QPixmap(imagePath)
-                if pixmap.isNull():
+                self.ui.originalPixmap = QPixmap(imagePath)
+                if self.ui.originalPixmap.isNull():
                     raise Exception("Не удалось загрузить изображение из файла.")
-                scene = QGraphicsScene()
-                item = QGraphicsPixmapItem(pixmap)
-                scene.addItem(item)
-                # Устанавливаем сцену для graphicsView вашего интерфейса пользователя
-                self.ui.graphicsView.setScene(scene)
-                # Подгоняем изображение под размер graphicsView с сохранением пропорций
-                self.ui.graphicsView.fitInView(item, QtCore.Qt.KeepAspectRatio)
+
+                self.setupGraphicsView(self.ui.graphicsView, self.ui.originalPixmap)
+
+                # После загрузки изображения исходное изображение должно быть отображено
+                # в правом окне (ui.graphicsView), поэтому мы вызываем setupGraphicsView еще раз
+                self.setupGraphicsView(self.ui.graphicsView_2, self.ui.originalPixmap)
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при загрузке изображения: {str(e)}")
-            print(f"Ошибка: {str(e)}")  # Отладочное сообщение в консоль
+            print(f"Ошибка: {str(e)}")
+
+    def captureFromWebcam(self):
+        cap = cv2.VideoCapture(0)  # 0 - обычно это ID первой подключенной камеры
+        if not cap.isOpened():
+            QMessageBox.critical(self, "Ошибка веб-камеры", "Не удалось открыть веб-камеру.")
+            return
+
+        ret, frame = cap.read()  # Чтение одного кадра
+        cap.release()  # Освобождение камеры
+
+        if ret:
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = image.shape
+            bytesPerLine = 3 * width
+            qImg = QtGui.QImage(image.data, width, height, bytesPerLine, QtGui.QImage.Format_RGB888)
+
+            self.ui.originalPixmap = QPixmap.fromImage(qImg)
+            if self.ui.originalPixmap.isNull():
+                QMessageBox.critical(self, "Ошибка изображения", "Не удалось загрузить изображение с камеры.")
+                return
+
+            self.setupGraphicsView(self.ui.graphicsView, self.ui.originalPixmap)
+            self.setupGraphicsView(self.ui.graphicsView_2, self.ui.originalPixmap)
+        else:
+            QMessageBox.critical(self, "Ошибка изображения", "Не удалось считать кадр с веб-камеры.")
+    def setupGraphicsView(self, graphicsView, pixmap):
+        scene = QGraphicsScene(self)
+        item = QGraphicsPixmapItem(pixmap)
+        scene.addItem(item)
+        graphicsView.setScene(scene)
+        graphicsView.fitInView(item, QtCore.Qt.KeepAspectRatio)
+    def setupSliders(self):
+        # Устанавливаем диапазон значений для слайдеров
+        self.ui.horizontalSlider.setRange(-100, 100)
+        self.ui.horizontalSlider_2.setRange(-100, 100)
+        self.ui.horizontalSlider_3.setRange(-100, 100)
+
+        # Соединяем слайдеры с методами обработчиками
+        self.ui.horizontalSlider.valueChanged.connect(self.updateImage)
+        self.ui.horizontalSlider_2.valueChanged.connect(self.updateImage)
+        self.ui.horizontalSlider_3.valueChanged.connect(self.updateImage)
+
+    def updateImage(self):
+        if self.ui.originalPixmap and not self.ui.originalPixmap.isNull():
+            # Преобразуем QPixmap в QImage для обработки
+            image = self.ui.originalPixmap.toImage()
+
+            contrast = self.ui.horizontalSlider.value()
+            brightness = self.ui.horizontalSlider_2.value()
+            sharpness = self.ui.horizontalSlider_3.value()
+
+            try:
+                # Применяем изменения к изображению
+                # Вам нужно будет реализовать adjustImage с учетом контраста, яркости и резкости
+                adjustedImage = self.adjustImage(image, contrast, brightness, sharpness)
+
+                # Преобразуем QImage обратно в QPixmap
+                self.ui.adjustedPixmap = QPixmap.fromImage(adjustedImage)
+
+                # Обновляем левое окно QGraphicsView с улучшенным изображением
+                self.setupGraphicsView(self.ui.graphicsView_2, self.ui.adjustedPixmap)
+            except Exception as e:
+                print(f"Ошибка при обновлении изображения: {e}")
+                QMessageBox.critical(self, "Ошибка обновления", f"Ошибка при обновлении изображения: {e}")
+
+    def adjustImage(self, img, contrast, brightness, sharpness):
+        # Применяем изменения к изображению
+        img = self.adjust_contrast(img, contrast)
+        img = self.adjust_brightness(img, brightness)
+        img = self.adjust_sharpness(img, sharpness)
+
+        # Резкость мы не изменяем в данном примере, так как это более сложная операция
+        return img
+    def adjust_contrast(self, img, contrast):
+        # Контраст настраивается через изменение разности между цветами
+        contrast = (contrast - 50) / 50  # Преобразовать диапазон слайдера в [-1, 1]
+
+        for y in range(img.height()):
+            for x in range(img.width()):
+                color = img.pixelColor(x, y)
+                r = self.truncate(color.red() * (1 + contrast))
+                g = self.truncate(color.green() * (1 + contrast))
+                b = self.truncate(color.blue() * (1 + contrast))
+                img.setPixelColor(x, y, QColor(r, g, b))
+        return img
+
+    def adjust_brightness(self, img, brightness):
+        # Яркость настраивается через добавление значения к каждому цветовому компоненту
+        brightness = brightness - 100  # Преобразовать диапазон слайдера из [0, 100] в [-50, 50]
+
+        for y in range(img.height()):
+            for x in range(img.width()):
+                color = img.pixelColor(x, y)
+                r = self.truncate(color.red() + brightness)
+                g = self.truncate(color.green() + brightness)
+                b = self.truncate(color.blue() + brightness)
+                img.setPixelColor(x, y, QColor(r, g, b))
+        return img
+
+    def adjust_sharpness(self, img, sharpness):
+
+        sharpness = sharpness / 100  # Преобразовать диапазон слайдера из [0, 100] в [0, 2]
+
+        # Простая реализация резкости не представлена, так как она требует использования фильтров
+        return img
+
+    def truncate(self, value):
+        # Усечение значения, чтобы оно оставалось в диапазоне [0, 255]
+        return max(0, min(255, int(value)))
